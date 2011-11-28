@@ -307,6 +307,37 @@ redis_session_key(redis_pool_member *rpm, const char *key, int key_len, int *ses
 	return session;
 }
 
+/*
+A copy from http://svn.php.net/viewvc/php/php-src/trunk/ext/session/mod_files.c?view=markup
+*/
+static int ps_redis_valid_key(const char *key)
+{
+	size_t len;
+	const char *p;
+	char c;
+	int ret = 1;
+
+	for (p = key; (c = *p); p++) {
+		/* valid characters are a..z,A..Z,0..9 */
+		if (!((c >= 'a' && c <= 'z')
+				|| (c >= 'A' && c <= 'Z')
+				|| (c >= '0' && c <= '9')
+				|| c == ','
+				|| c == '-')) {
+			ret = 0;
+			break;
+		}
+	}
+
+	len = p - key;
+
+	/* Use 128 characters limit for completely compatible with file-handler behavior. */
+	if (len == 0 || len > 128) {
+		ret = 0;
+	}
+
+	return ret;
+}
 
 /* {{{ PS_READ_FUNC
  */
@@ -315,6 +346,12 @@ PS_READ_FUNC(redis)
 	char *session, *cmd;
 	int session_len, cmd_len;
 
+	if (0 == ps_redis_valid_key(key)) {
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "The session id is empty, too long or contains illegal characters, valid characters are a-z, A-Z, 0-9 and '-,'");
+		PS(invalid_session_id) = 1;
+		return FAILURE;
+	}
+	
 	redis_pool *pool = PS_GET_MOD_DATA();
     redis_pool_member *rpm = redis_pool_get_sock(pool, key TSRMLS_CC);
 	RedisSock *redis_sock = rpm?rpm->redis_sock:NULL;
@@ -348,6 +385,12 @@ PS_WRITE_FUNC(redis)
 	char *cmd, *response, *session;
 	int cmd_len, response_len, session_len;
 
+	if (0 == ps_redis_valid_key(key)) {
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "The session id is empty, too long or contains illegal characters, valid characters are a-z, A-Z, 0-9 and '-,'");
+		PS(invalid_session_id) = 1;
+		return FAILURE;
+	}
+	
 	redis_pool *pool = PS_GET_MOD_DATA();
     redis_pool_member *rpm = redis_pool_get_sock(pool, key TSRMLS_CC);
 	RedisSock *redis_sock = rpm?rpm->redis_sock:NULL;
@@ -429,4 +472,3 @@ PS_GC_FUNC(redis)
 
 #endif
 /* vim: set tabstop=4 expandtab: */
-
